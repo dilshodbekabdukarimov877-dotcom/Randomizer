@@ -6,7 +6,7 @@ O'rnatish:
   pip install python-telegram-bot
 
 Ishlatish:
-  BOT_TOKEN=<tokeningiz> python tournament_bot.py
+  BOT_TOKEN=<8813320566:AAH6CtKeZKA1lhHZGKdfpbRb8sHZXaZUdL0> python tournament_bot.py
 
 Render deploy:
   - Start command: python tournament_bot.py
