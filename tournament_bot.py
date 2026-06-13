@@ -6,7 +6,7 @@ O'rnatish:
   pip install python-telegram-bot
 
 Ishlatish:
-  BOT_TOKEN=<8813320566:AAH6CtKeZKA1lhHZGKdfpbRb8sHZXaZUdL0> python tournament_bot.py
+  BOT_TOKEN=<tokeningiz> python tournament_bot.py
 
 Render deploy:
   - Start command: python tournament_bot.py
@@ -314,7 +314,16 @@ def main() -> None:
     app.add_handler(MessageHandler(filters.COMMAND, unknown))
 
     print("✅ Bot ishga tushdi! Ctrl+C bilan to'xtatish mumkin.")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+
+    async def run():
+        async with app:
+            await app.initialize()
+            await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+            await app.start()
+            # Ctrl+C bosguncha ishlaydi
+            await asyncio.Event().wait()
+
+    asyncio.run(run())
 
 
 if __name__ == "__main__":
