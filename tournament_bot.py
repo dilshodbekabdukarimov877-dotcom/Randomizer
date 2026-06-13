@@ -17,6 +17,9 @@ import os
 import re
 import random
 import asyncio
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from telegram.error import Conflict
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -360,6 +363,25 @@ async def unknown(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
+# ─── Render uchun Health Check HTTP server ─────────────────────────────────────
+
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"OK")
+
+    def log_message(self, format, *args):
+        pass  # HTTP loglarni o'chirish
+
+
+def start_health_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), HealthHandler)
+    print(f"✅ Health server {port}-portda ishga tushdi")
+    server.serve_forever()
+
+
 # ─── Main ───────────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -370,6 +392,10 @@ def main() -> None:
             "Render.com → Environment → BOT_TOKEN qo'shing.\n"
             "Yoki: export BOT_TOKEN=<tokeningiz>"
         )
+
+    # Render Web Service: HTTP server alohida threadda
+    health_thread = threading.Thread(target=start_health_server, daemon=True)
+    health_thread.start()
 
     app = Application.builder().token(token).build()
 
@@ -386,12 +412,17 @@ def main() -> None:
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.COMMAND, unknown))
 
-    print("✅ Bot ishga tushdi! Ctrl+C bilan to'xtatish mumkin.")
+    print("✅ Bot ishga tushdi!")
 
     async def run():
         async with app:
             await app.initialize()
-            await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+            # Oldingi sessiyalarni tozalash (conflict oldini olish)
+            await app.bot.delete_webhook(drop_pending_updates=True)
+            await app.updater.start_polling(
+                allowed_updates=Update.ALL_TYPES,
+                drop_pending_updates=True,
+            )
             await app.start()
             await asyncio.Event().wait()
 
