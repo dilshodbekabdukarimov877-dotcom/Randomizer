@@ -225,6 +225,75 @@ async def shuffle(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(bracket_text, parse_mode="MarkdownV2", reply_markup=markup)
 
 
+async def ask_next_winner(chat_id: int, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """Navbatdagi juftlik uchun g'olib so'raydi."""
+    session = get_session(chat_id)
+    current_pairs = session["rounds"][-1]
+    confirmed = session["round_winners"]       # shu turda tasdiqlangan g'oliblar
+    pending_pairs = [                          # hali hal qilinmagan juftliklar
+        (a, b) for a, b in current_pairs
+        if a not in confirmed and b not in confirmed and b != "bye"
+    ]
+
+    # bye o'yinchilarni avtomatik qo'shish
+    for a, b in current_pairs:
+        if b == "bye" and a not in confirmed:
+            confirmed.append(a)
+
+    if not pending_pairs:
+        # Barcha juftliklar hal bo'ldi — keyingi turni boshlash
+        winners = confirmed[:]
+        if len(winners) < 2:
+            winner_name = winners[0] if winners else "???"
+            session["rounds"] = []
+            session["current_round"] = 0
+            session["round_winners"] = []
+            await ctx.bot.send_message(
+                chat_id,
+                f"🏆 *Turnir tugadi\\!*\n\n🥇 G'olib: *{escape_md(winner_name)}* 🎉\n\n"
+                f"Yangi turnir uchun `/newgame` bering\\.",
+                parse_mode="MarkdownV2",
+            )
+            return
+
+        new_pairs = make_pairs(winners)
+        session["rounds"].append(new_pairs)
+        session["current_round"] += 1
+        session["round_winners"] = []
+
+        winners_text = "\n".join(f"  ✅ {escape_md(w)}" for w in winners)
+        bracket_text = format_bracket(new_pairs, session["current_round"])
+
+        await ctx.bot.send_message(
+            chat_id,
+            f"🎯 *{session['current_round'] - 1}\\-tur g'oliblari:*\n"
+            f"{winners_text}\n\n{bracket_text}\n\n"
+            f"G'oliblarni belgilash uchun `/nextround` bering\\.",
+            parse_mode="MarkdownV2",
+        )
+        return
+
+    # Navbatdagi hal qilinmagan juftlikni so'rash
+    pair_index = len(current_pairs) - len(pending_pairs)
+    a, b = pending_pairs[0]
+    ea, eb = escape_md(a), escape_md(b)
+
+    keyboard = [[
+        InlineKeyboardButton(f"🏅 {a}", callback_data=f"winner:{a}"),
+        InlineKeyboardButton(f"🏅 {b}", callback_data=f"winner:{b}"),
+    ]]
+    markup = InlineKeyboardMarkup(keyboard)
+
+    await ctx.bot.send_message(
+        chat_id,
+        f"⚔️ *{pair_index + 1}\\-jang g'olibi kim?*\n\n"
+        f"  🔵 *{ea}*\n"
+        f"  🔴 *{eb}*",
+        parse_mode="MarkdownV2",
+        reply_markup=markup,
+    )
+
+
 async def next_round(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
     session = get_session(chat_id)
@@ -235,71 +304,14 @@ async def next_round(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         )
         return
 
-    # FIX #3: g'oliblar allaqachon tanlangan bo'lsa qayta tanlamasin
-    if session["round_winners"]:
-        winners = session["round_winners"]
-        await update.message.reply_text(
-            "⚠️ Bu tur g'oliblari allaqachon tanlangan\\!\n"
-            "Keyingi turga o'tish uchun `/nextround` ni yana bir marta bosing yoki "
-            "yangi o'yin uchun `/newgame`\\.",
-            parse_mode="MarkdownV2",
-        )
-        return
-
-    current_pairs = session["rounds"][-1]
-
-    # FIX #4: bo'sh pairs holati
-    if not current_pairs:
+    if not session["rounds"][-1]:
         await update.message.reply_text(
             "❗ Joriy turda juftliklar yo'q\\. `/newgame` bilan qayta boshlang\\.",
             parse_mode="MarkdownV2",
         )
         return
 
-    winners = []
-    for a, b in current_pairs:
-        if b == "bye":
-            winners.append(a)
-        else:
-            winners.append(random.choice([a, b]))
-
-    # FIX #4: winners bo'sh bo'lsa himoya
-    if not winners:
-        await update.message.reply_text(
-            "❗ G'oliblar aniqlanmadi\\. `/newgame` bilan qayta boshlang\\.",
-            parse_mode="MarkdownV2",
-        )
-        return
-
-    if len(winners) < 2:
-        winner_name = winners[0]
-        # Turnir tugadi - sessiyani tozalaymiz
-        session["rounds"] = []
-        session["current_round"] = 0
-        session["round_winners"] = []
-        await update.message.reply_text(
-            f"🏆 *Turnir tugadi\\!*\n\n🥇 G'olib: *{escape_md(winner_name)}* 🎉\n\n"
-            f"Yangi turnir uchun `/newgame` bering\\.",
-            parse_mode="MarkdownV2",
-        )
-        return
-
-    # FIX #3: g'oliblarni saqlaymiz (qayta /nextround bosishdan himoya)
-    session["round_winners"] = winners
-
-    new_pairs = make_pairs(winners)
-    session["rounds"].append(new_pairs)
-    session["current_round"] += 1
-    session["round_winners"] = []   # yangi tur uchun tozalash
-
-    winners_text = "\n".join(f"  ✅ {escape_md(w)}" for w in winners)
-    bracket_text = format_bracket(new_pairs, session["current_round"])
-
-    await update.message.reply_text(
-        f"🎯 *{session['current_round'] - 1}\\-tur g'oliblari \\(random tanlandi\\):*\n"
-        f"{winners_text}\n\n{bracket_text}",
-        parse_mode="MarkdownV2",
-    )
+    await ask_next_winner(chat_id, ctx)
 
 
 async def clear(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -352,6 +364,22 @@ async def button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None
         keyboard = [[InlineKeyboardButton("🔀 Qayta aralashtir", callback_data="reshuffle")]]
         markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(bracket_text, parse_mode="MarkdownV2", reply_markup=markup)
+
+    elif query.data.startswith("winner:"):
+        winner_name = query.data[len("winner:"):]
+
+        # Tugma ustidagi xabarni yangilash
+        await query.edit_message_text(
+            f"✅ *{escape_md(winner_name)}* g'olib\\!",
+            parse_mode="MarkdownV2",
+        )
+
+        # G'olibni saqlaymiz (duplicate bo'lmasin)
+        if winner_name not in session["round_winners"]:
+            session["round_winners"].append(winner_name)
+
+        # Keyingi juftlikni so'rash yoki tur yakunlash
+        await ask_next_winner(chat_id, ctx)
 
 
 # ─── Noma'lum buyruq ────────────────────────────────────────────────────────────
