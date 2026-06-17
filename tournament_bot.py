@@ -44,9 +44,24 @@ def get_session(chat_id: int) -> dict:
             "players": [],
             "rounds": [],
             "current_round": 0,
-            "round_winners": [],   # FIX #3: har tur g'oliblari bir marta saqlanadi
+            "round_winners": [],
+            "stats": {},  # {ism: {"wins": 0, "losses": 0, "titles": 0}}
         }
+    if "stats" not in sessions[chat_id]:
+        sessions[chat_id]["stats"] = {}
     return sessions[chat_id]
+
+
+def update_stats(session: dict, winner: str, loser: str = None) -> None:
+    """G'olib va yutqazganga statistika yozadi."""
+    stats = session["stats"]
+    if winner not in stats:
+        stats[winner] = {"wins": 0, "losses": 0, "titles": 0}
+    stats[winner]["wins"] += 1
+    if loser and loser != "bye":
+        if loser not in stats:
+            stats[loser] = {"wins": 0, "losses": 0, "titles": 0}
+        stats[loser]["losses"] += 1
 
 
 def escape_md(text: str) -> str:
@@ -98,6 +113,8 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         "  /shuffle — random juftlash & tur boshlash\n"
         "  /nextround — keyingi turni boshlash\n"
         "  /status — joriy holat\n"
+        "  /stats — statistika (g'alabalar, mag'lubiyatlar)\n"
+        "  /resetstats — statistikani tozalash\n"
         "  /clear — hamma narsani tozalash\n"
         "  /help — yordam"
     )
@@ -248,10 +265,31 @@ async def ask_next_winner(chat_id: int, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             session["rounds"] = []
             session["current_round"] = 0
             session["round_winners"] = []
+
+            # Chempionlik unvonini statistikaga qo'shish
+            stats = session["stats"]
+            if winner_name not in stats:
+                stats[winner_name] = {"wins": 0, "losses": 0, "titles": 0}
+            stats[winner_name]["titles"] += 1
+
+            # 🎊 WOW — turnir g'olibi tantanali e'lon
+            wow_lines = [
+                "🎊🎊🎊🎊🎊🎊🎊🎊🎊🎊",
+                "",
+                "⠀🏆 *TURNIR YAKUNLANDI\\!* 🏆",
+                "",
+                f"👑 *CHEMPION:*",
+                f"🌟 *{escape_md(winner_name)}* 🌟",
+                "",
+                "🥇🎖 Tabriklaymiz\\! 🎖🥇",
+                "",
+                "🎊🎊🎊🎊🎊🎊🎊🎊🎊🎊",
+                "",
+                "_Yangi turnir uchun_ `/newgame`",
+            ]
             await ctx.bot.send_message(
                 chat_id,
-                f"🏆 *Turnir tugadi\\!*\n\n🥇 G'olib: *{escape_md(winner_name)}* 🎉\n\n"
-                f"Yangi turnir uchun `/newgame` bering\\.",
+                "\n".join(wow_lines),
                 parse_mode="MarkdownV2",
             )
             return
@@ -261,14 +299,17 @@ async def ask_next_winner(chat_id: int, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         session["current_round"] += 1
         session["round_winners"] = []
 
-        winners_text = "\n".join(f"  ✅ {escape_md(w)}" for w in winners)
+        winners_text = "\n".join(f"  🏅 {escape_md(w)}" for w in winners)
         bracket_text = format_bracket(new_pairs, session["current_round"])
 
+        # 🎯 Tur yakunlandi — keyingi tur e'loni
         await ctx.bot.send_message(
             chat_id,
-            f"🎯 *{session['current_round'] - 1}\\-tur g'oliblari:*\n"
-            f"{winners_text}\n\n{bracket_text}\n\n"
-            f"G'oliblarni belgilash uchun `/nextround` bering\\.",
+            f"🔥 *{session['current_round'] - 1}\\-tur yakunlandi\\!*\n\n"
+            f"*G'oliblar:*\n{winners_text}\n\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"{bracket_text}\n\n"
+            f"▶️ Davom etish uchun `/nextround` bering\\.",
             parse_mode="MarkdownV2",
         )
         return
@@ -328,6 +369,51 @@ async def clear(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
+async def stats_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    chat_id = update.effective_chat.id
+    session = get_session(chat_id)
+    stats = session["stats"]
+
+    if not stats:
+        await update.message.reply_text(
+            "📊 Hali statistika yo'q\\. Turnir o'tkazing\\!",
+            parse_mode="MarkdownV2",
+        )
+        return
+
+    # Saralash: avval unvon, keyin g'alabalar soni bo'yicha
+    sorted_players = sorted(
+        stats.items(),
+        key=lambda x: (x[1]["titles"], x[1]["wins"]),
+        reverse=True,
+    )
+
+    rows = []
+    for i, (name, s) in enumerate(sorted_players):
+        medal = "🥇" if i == 0 else "🥈" if i == 1 else "🥉" if i == 2 else "  "
+        title_str = str(s['titles']) + "x" if s['titles'] > 0 else "-"
+        rows.append(medal + " " + name[:12].ljust(12) + " " + str(s['wins']).rjust(5) + " " + str(s['losses']).rjust(5) + " " + title_str.rjust(5))
+
+    col_header = "   " + "O'yinchi".ljust(12) + " " + "G".rjust(5) + " " + "M".rjust(5) + " " + "Unvon".rjust(5)
+    divider = "-" * 36
+    table_body = "\n".join([col_header, divider] + rows)
+    msg = (
+        "📊 *STATISTIKA*\n\n"
+        "`" + table_body + "`\n\n"
+        "_G \\= Galaba \\| M \\= Maghlubiyat \\| Unvon \\= Chempionlik_"
+    )
+    await update.message.reply_text(msg, parse_mode="MarkdownV2")
+
+
+async def resetstats_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    chat_id = update.effective_chat.id
+    session = get_session(chat_id)
+    session["stats"] = {}
+    await update.message.reply_text(
+        "🗑 Statistika tozalandi\\.", parse_mode="MarkdownV2"
+    )
+
+
 async def status(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
     session = get_session(chat_id)
@@ -368,15 +454,28 @@ async def button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None
     elif query.data.startswith("winner:"):
         winner_name = query.data[len("winner:"):]
 
-        # Tugma ustidagi xabarni yangilash
+        # 🎊 Jang g'olibi — kichik wow e'lon
+        medals = ["🥇", "🏅", "⭐", "💪", "🔥", "👑", "🎯", "💥"]
+        medal = random.choice(medals)
         await query.edit_message_text(
-            f"✅ *{escape_md(winner_name)}* g'olib\\!",
+            f"{medal} *{escape_md(winner_name)}* g'olib\\! {medal}",
             parse_mode="MarkdownV2",
         )
 
         # G'olibni saqlaymiz (duplicate bo'lmasin)
         if winner_name not in session["round_winners"]:
             session["round_winners"].append(winner_name)
+            # Raqibni topib statistika yangilaymiz
+            current_pairs = session["rounds"][-1] if session["rounds"] else []
+            loser = None
+            for a, b in current_pairs:
+                if a == winner_name:
+                    loser = b
+                    break
+                elif b == winner_name:
+                    loser = a
+                    break
+            update_stats(session, winner_name, loser)
 
         # Keyingi juftlikni so'rash yoki tur yakunlash
         await ask_next_winner(chat_id, ctx)
@@ -436,6 +535,8 @@ def main() -> None:
     app.add_handler(CommandHandler("shuffle", shuffle))
     app.add_handler(CommandHandler("nextround", next_round))
     app.add_handler(CommandHandler("clear", clear))
+    app.add_handler(CommandHandler("stats", stats_cmd))
+    app.add_handler(CommandHandler("resetstats", resetstats_cmd))
     app.add_handler(CommandHandler("status", status))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.COMMAND, unknown))
