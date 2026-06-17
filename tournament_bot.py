@@ -1,4 +1,3 @@
-cat << 'PYEOF' > /mnt/user-data/outputs/tournament_bot.py
 """
 🎮 Tournament Randomizer Bot - Render.com uchun tayyor
 Ishlatish: BOT_TOKEN=<token> python tournament_bot.py
@@ -533,5 +532,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-PYEOF
-python3 -m py_compile /mnt/user-data/outputs/tournament_bot.py && echo "✅ Syntax OK" || echo "❌ Error"
