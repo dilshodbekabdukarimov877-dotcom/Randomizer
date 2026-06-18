@@ -33,14 +33,19 @@ def get_session(chat_id: int) -> dict:
     return sessions[chat_id]
 
 
+def ensure_player_stats(stats: dict, name: str) -> None:
+    if name not in stats:
+        stats[name] = {"wins": 0, "losses": 0, "titles": 0, "points": 0}
+    if "points" not in stats[name]:
+        stats[name]["points"] = 0
+
+
 def update_stats(session: dict, winner: str, loser: str = None) -> None:
     stats = session["stats"]
-    if winner not in stats:
-        stats[winner] = {"wins": 0, "losses": 0, "titles": 0}
+    ensure_player_stats(stats, winner)
     stats[winner]["wins"] += 1
     if loser and loser != "bye":
-        if loser not in stats:
-            stats[loser] = {"wins": 0, "losses": 0, "titles": 0}
+        ensure_player_stats(stats, loser)
         stats[loser]["losses"] += 1
 
 
@@ -244,19 +249,42 @@ async def ask_next_winner(chat_id: int, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             # Turnir tugadi
             winner_name = winners[0] if winners else "???"
             stats = session["stats"]
-            if winner_name not in stats:
-                stats[winner_name] = {"wins": 0, "losses": 0, "titles": 0}
+
+            # Chempion: 3 ball + unvon
+            ensure_player_stats(stats, winner_name)
             stats[winner_name]["titles"] += 1
+            stats[winner_name]["points"] += 3
+
+            # Finalist (oxirgi turda yutqazgan): 1 ball
+            # Oxirgi tur juftligi
+            last_pairs = session["rounds"][-1] if session["rounds"] else []
+            finalist_name = None
+            for a, b in last_pairs:
+                if a == winner_name and b != "bye":
+                    finalist_name = b
+                    break
+                elif b == winner_name and a != "bye":
+                    finalist_name = a
+                    break
+            if finalist_name:
+                ensure_player_stats(stats, finalist_name)
+                stats[finalist_name]["points"] += 1
+
             session["rounds"] = []
             session["current_round"] = 0
             session["round_winners"] = []
 
+            finalist_line = (
+                f"🥈 Finalist: *{esc(finalist_name)}* \\+1 ball\n\n"
+                if finalist_name else ""
+            )
             wow = (
                 "🎊🎊🎊🎊🎊🎊🎊🎊🎊🎊\n\n"
-                "🏆 *TURNIR YAKUNLANDI\!* 🏆\n\n"
+                "🏆 *TURNIR YAKUNLANDI\\!* 🏆\n\n"
                 f"👑 *CHEMPION:*\n"
-                f"🌟 *{esc(winner_name)}* 🌟\n\n"
-                "🥇🎖 Tabriklaymiz\! 🎖🥇\n\n"
+                f"🌟 *{esc(winner_name)}* 🌟 \\+3 ball\n\n"
+                + finalist_line
+                + "🥇🎖 Tabriklaymiz\\! 🎖🥇\n\n"
                 "🎊🎊🎊🎊🎊🎊🎊🎊🎊🎊\n\n"
                 "_Yangi turnir uchun_ /newgame"
             )
@@ -352,9 +380,10 @@ async def stats_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         )
         return
 
+    # Ball bo'yicha saralash, keyin g'alabalar
     sorted_players = sorted(
         stats.items(),
-        key=lambda x: (x[1]["titles"], x[1]["wins"]),
+        key=lambda x: (x[1].get("points", 0), x[1]["titles"], x[1]["wins"]),
         reverse=True,
     )
 
@@ -362,23 +391,25 @@ async def stats_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     for i, (name, s) in enumerate(sorted_players):
         medal = "🥇" if i == 0 else "🥈" if i == 1 else "🥉" if i == 2 else "  "
         title_str = str(s["titles"]) + "x" if s["titles"] > 0 else "-"
+        pts = s.get("points", 0)
         row = (
             medal + " "
-            + name[:11].ljust(11) + " "
+            + name[:10].ljust(10) + " "
+            + str(pts).rjust(4) + " "
             + str(s["wins"]).rjust(4) + " "
             + str(s["losses"]).rjust(4) + " "
-            + title_str.rjust(5)
+            + title_str.rjust(4)
         )
         rows.append(row)
 
-    header = "   " + "Ism".ljust(11) + " " + "G".rjust(4) + " " + "M".rjust(4) + " " + "Unvon".rjust(5)
-    divider = "-" * 30
+    header = "   " + "Ism".ljust(10) + " " + "Ball".rjust(4) + " " + "G".rjust(4) + " " + "M".rjust(4) + " " + "Unvon".rjust(5)
+    divider = "-" * 32
     table = "\n".join([header, divider] + rows)
 
     msg = (
-        "📊 *STATISTIKA*\n\n"
+        "📊 *GURUH REYTINGI*\n\n"
         "`" + table + "`\n\n"
-        "_G\\=Galaba  M\\=Maghlubiyat  Unvon\\=🏆_"
+        "_Ball: 🥇Chempion\\=3  🥈Finalist\\=1_"
     )
     await update.message.reply_text(msg, parse_mode="MarkdownV2")
 
@@ -509,6 +540,7 @@ def main() -> None:
     app.add_handler(CommandHandler("nextround", next_round))
     app.add_handler(CommandHandler("clear", clear))
     app.add_handler(CommandHandler("stats", stats_cmd))
+    app.add_handler(CommandHandler("rating", stats_cmd))
     app.add_handler(CommandHandler("resetstats", resetstats_cmd))
     app.add_handler(CommandHandler("status", status))
     app.add_handler(CallbackQueryHandler(button_handler))
