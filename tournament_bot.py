@@ -15,10 +15,16 @@ from telegram.ext import (
     CallbackQueryHandler, ContextTypes, filters,
 )
 
-# ── Sozlamalar ──────────────────────────────────────────────────────────[...]
-REQUIRED_GROUP = os.environ.get("REQUIRED_GROUP", "")  # masalan: @mening_guruhim
+# ── Sozlamalar ─────────────────────────────────────────────────────────────────
+# REQUIRED_GROUP = guruh ID si (masalan: -1001234567890)
+# Guruh ID sini bilish uchun: guruhga @userinfobot qo'shing va /start yozing
+_raw_group = os.environ.get("REQUIRED_GROUP", "")
+if _raw_group.lstrip("-").isdigit():
+    REQUIRED_GROUP = int(_raw_group)   # raqam bo'lsa ID sifatida ishlatamiz
+else:
+    REQUIRED_GROUP = _raw_group        # aks holda username (@guruh)
 
-# ── Ma'lumotlar ──────────────────────────────────────────────────────────[...]
+# ── Ma'lumotlar ────────────────────────────────────────────────────────────────
 sessions: dict = {}
 
 
@@ -81,9 +87,8 @@ def format_players(players: list) -> str:
     return "\n".join(f"  {i+1}\\. {esc(p)}" for i, p in enumerate(players))
 
 
-# ── Obuna tekshiruvi ──────────────────────────────────────────────────────[...]
+# ── Obuna tekshiruvi ───────────────────────────────────────────────────────────
 async def check_subscription(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> bool:
-    """✅ TUZATILGAN VERSIYA - Exception handling xatosi ochirildi"""
     if not REQUIRED_GROUP:
         return True
 
@@ -94,27 +99,19 @@ async def check_subscription(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> 
         member = await ctx.bot.get_chat_member(chat_id=REQUIRED_GROUP, user_id=user_id)
         print(f"[SUB CHECK] user={user_id} (@{username}) group={REQUIRED_GROUP} status={member.status}")
 
-        # ✅ A'zo bo'lsa TRUE, yo'q bo'lsa FALSE
         if member.status in ("left", "kicked", "banned"):
             print(f"[SUB] user={user_id} a'zo emas — bloklandi")
-            # ❌ Bu yerda FALSE qaytarish kerak edi!
         else:
-            return True  # ✅ TO'G'RI - ruxsat ber (member, administrator, creator, restricted)
+            return True  # member, administrator, creator, restricted
 
     except Exception as e:
         err = str(e).lower()
         print(f"[SUB ERROR] user={user_id} group={REQUIRED_GROUP} error={e}")
-        
-        # ✅ Agar bot admin emas yoki guruh topilmasa, tekshiruvni o'tkazib yuborish
         if any(x in err for x in ["not enough rights", "bot was kicked", "chat not found", "forbidden"]):
-            print("[SUB] Bot admin emas yoki guruh noto'g'ri — tekshiruv o'tkazib yuborildi")
-            return True  # ✅ CONFIG MUAMMOSI - ruxsat berish
-        
-        # ❌ BOSHQA XATOLIKLAR UCHUN BLOKLASH (avvalgi `return True` xatosi!)
-        print(f"[SUB] Noma'lum xato - bloklandi: {e}")
-        return False  # ✅ NOMA'LUM XATO - ruxsat berma
+            print("[SUB] Bot admin emas yoki guruh noto'g'ri — o'tkazib yuborildi")
+            return True
+        return True  # Noma'lum xato — bloklama
 
-    # ✅ A'zo emas bo'lsa - BLOKLASH VA HABAR YUBORISH
     group_link = f"https://t.me/{REQUIRED_GROUP.lstrip('@')}"
     keyboard = [[InlineKeyboardButton("✅ Guruhga qo'shilish", url=group_link)]]
     markup = InlineKeyboardMarkup(keyboard)
@@ -127,9 +124,8 @@ async def check_subscription(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> 
     return False
 
 
-# ── Buyruqlar ──────────────────────────────────────────────────────────[...]
+# ── Buyruqlar ──────────────────────────────────────────────────────────────────
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
-    # ✅ /start va /help majburiy obunadan XALOS - to'g'ri!
     text = (
         "👋 *Tournament Randomizer Botga xush kelibsiz\\!*\n\n"
         "Bu bot o'yinchilarni random juftlarga ajratib turnir o'tkazishga yordam beradi\\.\n\n"
@@ -150,7 +146,6 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def help_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
-    # ✅ /help ham majburiy obunadan XALOS
     await start(update, ctx)
 
 
@@ -484,7 +479,7 @@ async def status(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text("\n".join(lines), parse_mode="MarkdownV2")
 
 
-# ── Inline tugmalar ────────────────────────────────────────────────────────[...]
+# ── Inline tugmalar ────────────────────────────────────────────────────────────
 async def button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
@@ -558,7 +553,7 @@ def start_health_server():
     server.serve_forever()
 
 
-# ── Main ──────────────────────────────────────────────────────────────[...]
+# ── Main ───────────────────────────────────────────────────────────────────────
 def main() -> None:
     token = os.environ.get("BOT_TOKEN")
     if not token:
