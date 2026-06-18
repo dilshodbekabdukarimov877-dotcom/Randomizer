@@ -18,6 +18,37 @@ from telegram.ext import (
 # ── Ma'lumotlar ────────────────────────────────────────────────────────────────
 sessions: dict = {}
 
+# Majburiy obuna — Render da REQUIRED_GROUP env variable orqali o'rnatiladi
+# Masalan: REQUIRED_GROUP = @mening_guruhim
+REQUIRED_GROUP = os.environ.get("REQUIRED_GROUP", "")
+
+
+async def check_subscription(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> bool:
+    """Foydalanuvchi guruhga a'zo ekanligini tekshiradi.
+    True = a'zo (davom etish mumkin), False = a'zo emas (xabar yuborildi)."""
+    if not REQUIRED_GROUP:
+        return True  # REQUIRED_GROUP o'rnatilmagan bo'lsa tekshirmasdan o'tkazib yuborish
+
+    user_id = update.effective_user.id
+    try:
+        member = await ctx.bot.get_chat_member(chat_id=REQUIRED_GROUP, user_id=user_id)
+        if member.status in ("member", "administrator", "creator"):
+            return True
+    except Exception:
+        pass
+
+    # A'zo emas — xabar yuborish
+    group_link = f"https://t.me/{REQUIRED_GROUP.lstrip('@')}"
+    keyboard = [[InlineKeyboardButton("✅ Guruhga qo'shilish", url=group_link)]]
+    markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(
+        "⛔ *Botdan foydalanish uchun guruhimizga a'zo bo'lish kerak\!*\n\n"
+        f"👇 Quyidagi tugmani bosib a'zo bo'ling, so'ng qaytadan urinib ko'ring\.",
+        parse_mode="MarkdownV2",
+        reply_markup=markup,
+    )
+    return False
+
 
 def get_session(chat_id: int) -> dict:
     if chat_id not in sessions:
@@ -109,6 +140,9 @@ async def help_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def newgame(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await check_subscription(update, ctx):
+        return
+
     chat_id = update.effective_chat.id
     # BUG FIX: newgame stats ni ham tozalamasin (tarix saqlansin)
     old_stats = get_session(chat_id).get("stats", {})
@@ -128,6 +162,9 @@ async def newgame(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def add_player(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await check_subscription(update, ctx):
+        return
+
     chat_id = update.effective_chat.id
     session = get_session(chat_id)
 
@@ -164,6 +201,9 @@ async def add_player(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def remove_player(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await check_subscription(update, ctx):
+        return
+
     chat_id = update.effective_chat.id
     session = get_session(chat_id)
 
@@ -193,6 +233,9 @@ async def remove_player(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def list_players(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await check_subscription(update, ctx):
+        return
+
     chat_id = update.effective_chat.id
     session = get_session(chat_id)
     players_text = format_players(session["players"])
@@ -203,6 +246,9 @@ async def list_players(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def shuffle(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await check_subscription(update, ctx):
+        return
+
     chat_id = update.effective_chat.id
     session = get_session(chat_id)
 
@@ -332,6 +378,9 @@ async def ask_next_winner(chat_id: int, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def next_round(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await check_subscription(update, ctx):
+        return
+
     chat_id = update.effective_chat.id
     session = get_session(chat_id)
 
@@ -352,6 +401,9 @@ async def next_round(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def clear(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await check_subscription(update, ctx):
+        return
+
     chat_id = update.effective_chat.id
     old_stats = get_session(chat_id).get("stats", {})
     sessions[chat_id] = {
@@ -369,6 +421,9 @@ async def clear(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def stats_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await check_subscription(update, ctx):
+        return
+
     chat_id = update.effective_chat.id
     session = get_session(chat_id)
     stats = session["stats"]
@@ -415,6 +470,9 @@ async def stats_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def resetstats_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await check_subscription(update, ctx):
+        return
+
     chat_id = update.effective_chat.id
     session = get_session(chat_id)
     session["stats"] = {}
@@ -422,6 +480,9 @@ async def resetstats_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None
 
 
 async def status(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await check_subscription(update, ctx):
+        return
+
     chat_id = update.effective_chat.id
     session = get_session(chat_id)
 
