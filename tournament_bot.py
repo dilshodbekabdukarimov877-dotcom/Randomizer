@@ -1,6 +1,6 @@
 """
 🎮 Tournament Randomizer Bot - Render.com uchun tayyor
-Ishlatish: BOT_TOKEN=<token> python tournament_bot.py
+Ishlatish: BOT_TOKEN=<token> REQUIRED_GROUP=@guruh python tournament_bot.py
 """
 
 import os
@@ -15,49 +15,18 @@ from telegram.ext import (
     CallbackQueryHandler, ContextTypes, filters,
 )
 
+# ── Sozlamalar ─────────────────────────────────────────────────────────────────
+REQUIRED_GROUP = os.environ.get("REQUIRED_GROUP", "")  # masalan: @mening_guruhim
+
 # ── Ma'lumotlar ────────────────────────────────────────────────────────────────
 sessions: dict = {}
-
-# Majburiy obuna — Render da REQUIRED_GROUP env variable orqali o'rnatiladi
-# Masalan: REQUIRED_GROUP = @mening_guruhim
-REQUIRED_GROUP = os.environ.get("REQUIRED_GROUP", "")
-
-
-async def check_subscription(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> bool:
-    """Foydalanuvchi guruhga a'zo ekanligini tekshiradi.
-    True = a'zo (davom etish mumkin), False = a'zo emas (xabar yuborildi)."""
-    if not REQUIRED_GROUP:
-        return True  # REQUIRED_GROUP o'rnatilmagan bo'lsa tekshirmasdan o'tkazib yuborish
-
-    user_id = update.effective_user.id
-    try:
-        member = await ctx.bot.get_chat_member(chat_id=REQUIRED_GROUP, user_id=user_id)
-        if member.status in ("member", "administrator", "creator"):
-            return True
-    except Exception:
-        pass
-
-    # A'zo emas — xabar yuborish
-    group_link = f"https://t.me/{REQUIRED_GROUP.lstrip('@')}"
-    keyboard = [[InlineKeyboardButton("✅ Guruhga qo'shilish", url=group_link)]]
-    markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(
-        "⛔ *Botdan foydalanish uchun guruhimizga a'zo bo'lish kerak\!*\n\n"
-        f"👇 Quyidagi tugmani bosib a'zo bo'ling, so'ng qaytadan urinib ko'ring\.",
-        parse_mode="MarkdownV2",
-        reply_markup=markup,
-    )
-    return False
 
 
 def get_session(chat_id: int) -> dict:
     if chat_id not in sessions:
         sessions[chat_id] = {
-            "players": [],
-            "rounds": [],
-            "current_round": 0,
-            "round_winners": [],
-            "stats": {},
+            "players": [], "rounds": [],
+            "current_round": 0, "round_winners": [], "stats": {},
         }
     if "stats" not in sessions[chat_id]:
         sessions[chat_id]["stats"] = {}
@@ -81,8 +50,7 @@ def update_stats(session: dict, winner: str, loser: str = None) -> None:
 
 
 # ── Yordamchi funksiyalar ──────────────────────────────────────────────────────
-def esc(text: str) -> str:
-    """MarkdownV2 uchun maxsus belgilarni escape qilish."""
+def esc(text) -> str:
     return re.sub(r'([_*\[\]()~`>#+=|{}.!\\-])', r'\\\1', str(text))
 
 
@@ -113,12 +81,48 @@ def format_players(players: list) -> str:
     return "\n".join(f"  {i+1}\\. {esc(p)}" for i, p in enumerate(players))
 
 
+# ── Obuna tekshiruvi ───────────────────────────────────────────────────────────
+async def check_subscription(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> bool:
+    if not REQUIRED_GROUP:
+        return True
+
+    user_id = update.effective_user.id
+    username = update.effective_user.username or "no_username"
+
+    try:
+        member = await ctx.bot.get_chat_member(chat_id=REQUIRED_GROUP, user_id=user_id)
+        print(f"[SUB CHECK] user={user_id} (@{username}) group={REQUIRED_GROUP} status={member.status}")
+
+        if member.status in ("left", "kicked", "banned"):
+            print(f"[SUB] user={user_id} a'zo emas — bloklandi")
+        else:
+            return True  # member, administrator, creator, restricted
+
+    except Exception as e:
+        err = str(e).lower()
+        print(f"[SUB ERROR] user={user_id} group={REQUIRED_GROUP} error={e}")
+        if any(x in err for x in ["not enough rights", "bot was kicked", "chat not found", "forbidden"]):
+            print("[SUB] Bot admin emas yoki guruh noto'g'ri — o'tkazib yuborildi")
+            return True
+        return True  # Noma'lum xato — bloklama
+
+    group_link = f"https://t.me/{REQUIRED_GROUP.lstrip('@')}"
+    keyboard = [[InlineKeyboardButton("✅ Guruhga qo'shilish", url=group_link)]]
+    markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(
+        "⛔ *Botdan foydalanish uchun guruhimizga a'zo bo'lish kerak\\!*\n\n"
+        "👇 Quyidagi tugmani bosib a'zo bo'ling, so'ng qaytadan urinib ko'ring\\.",
+        parse_mode="MarkdownV2",
+        reply_markup=markup,
+    )
+    return False
+
+
 # ── Buyruqlar ──────────────────────────────────────────────────────────────────
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
-    # BUG FIX: start/help da barcha belgilar to'g'ri escape qilingan
     text = (
-        "👋 *Tournament Randomizer Botga xush kelibsiz\!*\n\n"
-        "Bu bot o'yinchilarni random juftlarga ajratib turnir o'tkazishga yordam beradi\.\n\n"
+        "👋 *Tournament Randomizer Botga xush kelibsiz\\!*\n\n"
+        "Bu bot o'yinchilarni random juftlarga ajratib turnir o'tkazishga yordam beradi\\.\n\n"
         "📋 *Buyruqlar:*\n"
         "  /newgame — yangi o'yin boshlash\n"
         "  /add Ism — o'yinchi qo'shish\n"
@@ -126,10 +130,10 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         "  /players — o'yinchilar ro'yxati\n"
         "  /shuffle — random juftlash\n"
         "  /nextround — keyingi tur\n"
-        "  /stats — statistika\n"
+        "  /stats yoki /rating — reyting\n"
         "  /resetstats — statistikani tozalash\n"
         "  /status — joriy holat\n"
-        "  /clear — hamma narsani tozalash\n"
+        "  /clear — o'yinni tozalash\n"
         "  /help — yordam"
     )
     await update.message.reply_text(text, parse_mode="MarkdownV2")
@@ -142,21 +146,16 @@ async def help_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 async def newgame(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if not await check_subscription(update, ctx):
         return
-
     chat_id = update.effective_chat.id
-    # BUG FIX: newgame stats ni ham tozalamasin (tarix saqlansin)
     old_stats = get_session(chat_id).get("stats", {})
     sessions[chat_id] = {
-        "players": [],
-        "rounds": [],
-        "current_round": 0,
-        "round_winners": [],
-        "stats": old_stats,
+        "players": [], "rounds": [],
+        "current_round": 0, "round_winners": [], "stats": old_stats,
     }
     await update.message.reply_text(
-        "✅ *Yangi o'yin boshlandi\!*\n\n"
-        "O'yinchilarni qo'shish uchun `/add Ism` buyrug'ini bering\.\n"
-        "Tayyor bo'lgach `/shuffle` bering\.",
+        "✅ *Yangi o'yin boshlandi\\!*\n\n"
+        "O'yinchilarni qo'shish uchun `/add Ism` buyrug'ini bering\\.\n"
+        "Tayyor bo'lgach `/shuffle` bering\\.",
         parse_mode="MarkdownV2",
     )
 
@@ -164,38 +163,34 @@ async def newgame(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 async def add_player(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if not await check_subscription(update, ctx):
         return
-
     chat_id = update.effective_chat.id
     session = get_session(chat_id)
 
     if not ctx.args:
-        await update.message.reply_text(
-            "❗ Ism kiriting: `/add Sardor`", parse_mode="MarkdownV2"
-        )
+        await update.message.reply_text("❗ Ism kiriting: `/add Sardor`", parse_mode="MarkdownV2")
         return
 
     name = " ".join(ctx.args).strip()
-
     if not name:
-        await update.message.reply_text("❗ Ism bo'sh bo'lmasin\.", parse_mode="MarkdownV2")
+        await update.message.reply_text("❗ Ism bo'sh bo'lmasin\\.", parse_mode="MarkdownV2")
         return
     if len(name) > 50:
-        await update.message.reply_text("❗ Ism juda uzun \\(max 50 belgi\\)\.", parse_mode="MarkdownV2")
+        await update.message.reply_text("❗ Ism juda uzun \\(max 50 belgi\\)\\.", parse_mode="MarkdownV2")
         return
     if name.lower() in [p.lower() for p in session["players"]]:
         await update.message.reply_text(
-            f"⚠️ *{esc(name)}* allaqachon ro'yxatda\!", parse_mode="MarkdownV2"
+            f"⚠️ *{esc(name)}* allaqachon ro'yxatda\\!", parse_mode="MarkdownV2"
         )
         return
     if len(session["players"]) >= 64:
-        await update.message.reply_text("❗ Maksimal 64 ta o'yinchi\.", parse_mode="MarkdownV2")
+        await update.message.reply_text("❗ Maksimal 64 ta o'yinchi\\.", parse_mode="MarkdownV2")
         return
 
     session["players"].append(name)
     count = len(session["players"])
     await update.message.reply_text(
-        f"✅ *{esc(name)}* qo'shildi\! Jami: *{count}* ta o'yinchi\.\n"
-        f"Tayyor bo'lgach `/shuffle` bering\.",
+        f"✅ *{esc(name)}* qo'shildi\\! Jami: *{count}* ta o'yinchi\\.\n"
+        f"Tayyor bo'lgach `/shuffle` bering\\.",
         parse_mode="MarkdownV2",
     )
 
@@ -203,7 +198,6 @@ async def add_player(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 async def remove_player(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if not await check_subscription(update, ctx):
         return
-
     chat_id = update.effective_chat.id
     session = get_session(chat_id)
 
@@ -211,23 +205,22 @@ async def remove_player(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("❗ Ism kiriting: `/remove Sardor`", parse_mode="MarkdownV2")
         return
 
-    name = " ".join(ctx.args).strip()
-    # BUG FIX: turnir davomida o'chirish — ogohlantirish
     if session["rounds"]:
         await update.message.reply_text(
-            "⚠️ Turnir davom etmoqda\! O'chirish uchun avval `/clear` bering\.",
+            "⚠️ Turnir davom etmoqda\\! O'chirish uchun avval `/clear` bering\\.",
             parse_mode="MarkdownV2",
         )
         return
 
+    name = " ".join(ctx.args).strip()
     matches = [p for p in session["players"] if p.lower() == name.lower()]
     if not matches:
-        await update.message.reply_text(f"❗ *{esc(name)}* topilmadi\.", parse_mode="MarkdownV2")
+        await update.message.reply_text(f"❗ *{esc(name)}* topilmadi\\.", parse_mode="MarkdownV2")
         return
 
     session["players"].remove(matches[0])
     await update.message.reply_text(
-        f"🗑 *{esc(matches[0])}* o'chirildi\. Qoldi: *{len(session['players'])}* ta\.",
+        f"🗑 *{esc(matches[0])}* o'chirildi\\. Qoldi: *{len(session['players'])}* ta\\.",
         parse_mode="MarkdownV2",
     )
 
@@ -235,7 +228,6 @@ async def remove_player(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 async def list_players(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if not await check_subscription(update, ctx):
         return
-
     chat_id = update.effective_chat.id
     session = get_session(chat_id)
     players_text = format_players(session["players"])
@@ -248,13 +240,12 @@ async def list_players(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 async def shuffle(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if not await check_subscription(update, ctx):
         return
-
     chat_id = update.effective_chat.id
     session = get_session(chat_id)
 
     if len(session["players"]) < 2:
         await update.message.reply_text(
-            "❗ Kamida 2 ta o'yinchi kerak\! `/add Ism` bilan qo'shing\.",
+            "❗ Kamida 2 ta o'yinchi kerak\\! `/add Ism` bilan qo'shing\\.",
             parse_mode="MarkdownV2",
         )
         return
@@ -271,38 +262,29 @@ async def shuffle(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def ask_next_winner(chat_id: int, ctx: ContextTypes.DEFAULT_TYPE) -> None:
-    """Navbatdagi hal qilinmagan juftlik uchun g'olib so'raydi."""
     session = get_session(chat_id)
     current_pairs = session["rounds"][-1]
     confirmed = session["round_winners"]
 
-    # bye o'yinchilarni avtomatik qo'shish
     for a, b in current_pairs:
         if b == "bye" and a not in confirmed:
             confirmed.append(a)
 
-    # Hali hal qilinmagan juftliklar
     pending = [
         (a, b) for a, b in current_pairs
         if a not in confirmed and b not in confirmed and b != "bye"
     ]
 
     if not pending:
-        # Barcha juftliklar hal bo'ldi
         winners = confirmed[:]
 
         if len(winners) < 2:
-            # Turnir tugadi
             winner_name = winners[0] if winners else "???"
             stats = session["stats"]
-
-            # Chempion: 3 ball + unvon
             ensure_player_stats(stats, winner_name)
             stats[winner_name]["titles"] += 1
             stats[winner_name]["points"] += 3
 
-            # Finalist (oxirgi turda yutqazgan): 1 ball
-            # Oxirgi tur juftligi
             last_pairs = session["rounds"][-1] if session["rounds"] else []
             finalist_name = None
             for a, b in last_pairs:
@@ -337,7 +319,6 @@ async def ask_next_winner(chat_id: int, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             await ctx.bot.send_message(chat_id, wow, parse_mode="MarkdownV2")
             return
 
-        # Keyingi turni boshlash
         new_pairs = make_pairs(winners)
         session["rounds"].append(new_pairs)
         session["current_round"] += 1
@@ -348,16 +329,15 @@ async def ask_next_winner(chat_id: int, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
         await ctx.bot.send_message(
             chat_id,
-            f"🔥 *{esc(session['current_round'] - 1)}\\-tur yakunlandi\!*\n\n"
+            f"🔥 *{esc(session['current_round'] - 1)}\\-tur yakunlandi\\!*\n\n"
             f"*G'oliblar:*\n{winners_text}\n\n"
             f"━━━━━━━━━━━━━━━\n"
             f"{bracket_text}\n\n"
-            f"▶️ Davom etish uchun /nextround bering\.",
+            f"▶️ Davom etish uchun /nextround bering\\.",
             parse_mode="MarkdownV2",
         )
         return
 
-    # Navbatdagi juftlikni so'rash
     pair_index = len(current_pairs) - len(pending)
     a, b = pending[0]
 
@@ -380,19 +360,17 @@ async def ask_next_winner(chat_id: int, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 async def next_round(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if not await check_subscription(update, ctx):
         return
-
     chat_id = update.effective_chat.id
     session = get_session(chat_id)
 
     if not session["rounds"]:
         await update.message.reply_text(
-            "❗ Avval `/shuffle` buyrug'ini bering\.", parse_mode="MarkdownV2"
+            "❗ Avval `/shuffle` buyrug'ini bering\\.", parse_mode="MarkdownV2"
         )
         return
-
     if not session["rounds"][-1]:
         await update.message.reply_text(
-            "❗ Joriy turda juftliklar yo'q\. `/newgame` bilan qayta boshlang\.",
+            "❗ Joriy turda juftliklar yo'q\\. `/newgame` bilan qayta boshlang\\.",
             parse_mode="MarkdownV2",
         )
         return
@@ -403,19 +381,15 @@ async def next_round(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 async def clear(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if not await check_subscription(update, ctx):
         return
-
     chat_id = update.effective_chat.id
     old_stats = get_session(chat_id).get("stats", {})
     sessions[chat_id] = {
-        "players": [],
-        "rounds": [],
-        "current_round": 0,
-        "round_winners": [],
-        "stats": old_stats,  # BUG FIX: clear statistikani o'chirmasin
+        "players": [], "rounds": [],
+        "current_round": 0, "round_winners": [], "stats": old_stats,
     }
     await update.message.reply_text(
-        "🗑 O'yin tozalandi \\(statistika saqlanib qoldi\\)\.\n"
-        "Yangi o'yin uchun `/newgame` bering\.",
+        "🗑 O'yin tozalandi \\(statistika saqlanib qoldi\\)\\.\n"
+        "Yangi o'yin uchun `/newgame` bering\\.",
         parse_mode="MarkdownV2",
     )
 
@@ -423,19 +397,17 @@ async def clear(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 async def stats_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if not await check_subscription(update, ctx):
         return
-
     chat_id = update.effective_chat.id
     session = get_session(chat_id)
     stats = session["stats"]
 
     if not stats:
         await update.message.reply_text(
-            "📊 Hali statistika yo'q\. Turnir o'tkazing\!",
+            "📊 Hali statistika yo'q\\. Turnir o'tkazing\\!",
             parse_mode="MarkdownV2",
         )
         return
 
-    # Ball bo'yicha saralash, keyin g'alabalar
     sorted_players = sorted(
         stats.items(),
         key=lambda x: (x[1].get("points", 0), x[1]["titles"], x[1]["wins"]),
@@ -458,7 +430,7 @@ async def stats_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         rows.append(row)
 
     header = "   " + "Ism".ljust(10) + " " + "Ball".rjust(4) + " " + "G".rjust(4) + " " + "M".rjust(4) + " " + "Unvon".rjust(5)
-    divider = "-" * 32
+    divider = "-" * 33
     table = "\n".join([header, divider] + rows)
 
     msg = (
@@ -472,17 +444,15 @@ async def stats_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 async def resetstats_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if not await check_subscription(update, ctx):
         return
-
     chat_id = update.effective_chat.id
     session = get_session(chat_id)
     session["stats"] = {}
-    await update.message.reply_text("🗑 Statistika tozalandi\.", parse_mode="MarkdownV2")
+    await update.message.reply_text("🗑 Statistika tozalandi\\.", parse_mode="MarkdownV2")
 
 
 async def status(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if not await check_subscription(update, ctx):
         return
-
     chat_id = update.effective_chat.id
     session = get_session(chat_id)
 
@@ -512,7 +482,7 @@ async def button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None
 
     if query.data == "reshuffle":
         if len(session["players"]) < 2:
-            await query.edit_message_text("❗ O'yinchilar yo'q\.", parse_mode="MarkdownV2")
+            await query.edit_message_text("❗ O'yinchilar yo'q\\.", parse_mode="MarkdownV2")
             return
         pairs = make_pairs(session["players"])
         session["rounds"] = [pairs]
@@ -526,20 +496,18 @@ async def button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None
     elif query.data.startswith("winner:"):
         winner_name = query.data[len("winner:"):]
 
-        # BUG FIX: tugma ikki marta bosilsa ikkinchi marta ignore qilish
         if winner_name in session["round_winners"]:
             return
 
         medals = ["🥇", "🏅", "⭐", "💪", "🔥", "👑", "🎯", "💥"]
         medal = random.choice(medals)
         await query.edit_message_text(
-            f"{medal} *{esc(winner_name)}* g'olib\! {medal}",
+            f"{medal} *{esc(winner_name)}* g'olib\\! {medal}",
             parse_mode="MarkdownV2",
         )
 
         session["round_winners"].append(winner_name)
 
-        # Raqibni topib statistika yangilash
         current_pairs = session["rounds"][-1] if session["rounds"] else []
         loser = None
         for a, b in current_pairs:
@@ -554,10 +522,9 @@ async def button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None
         await ask_next_winner(chat_id, ctx)
 
 
-# ── Noma'lum buyruq ────────────────────────────────────────────────────────────
 async def unknown(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
-        "❓ Noma'lum buyruq\. Yordam uchun /help bering\.",
+        "❓ Noma'lum buyruq\\. Yordam uchun /help bering\\.",
         parse_mode="MarkdownV2",
     )
 
@@ -576,7 +543,7 @@ class HealthHandler(BaseHTTPRequestHandler):
 def start_health_server():
     port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(("0.0.0.0", port), HealthHandler)
-    print(f"✅ Health server {port}-portda ishga tushdi")
+    print(f"Health server {port}-portda ishga tushdi")
     server.serve_forever()
 
 
@@ -584,7 +551,12 @@ def start_health_server():
 def main() -> None:
     token = os.environ.get("BOT_TOKEN")
     if not token:
-        raise ValueError("❌ BOT_TOKEN topilmadi! Render → Environment → BOT_TOKEN qo'shing.")
+        raise ValueError("BOT_TOKEN topilmadi! Render > Environment > BOT_TOKEN qo'shing.")
+
+    if REQUIRED_GROUP:
+        print(f"Obuna tekshiruvi yoqilgan: {REQUIRED_GROUP}")
+    else:
+        print("Obuna tekshiruvi o'chirilgan (REQUIRED_GROUP o'rnatilmagan)")
 
     health_thread = threading.Thread(target=start_health_server, daemon=True)
     health_thread.start()
@@ -607,7 +579,7 @@ def main() -> None:
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.COMMAND, unknown))
 
-    print("✅ Bot ishga tushdi!")
+    print("Bot ishga tushdi!")
 
     async def run():
         async with app:
