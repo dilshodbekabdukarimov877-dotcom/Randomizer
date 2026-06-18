@@ -95,29 +95,44 @@ async def check_subscription(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> 
     user_id = update.effective_user.id
     username = update.effective_user.username or "no_username"
 
+    # Guruh havolasini oldindan tayyorlaymiz (ID yoki username bo'lishi mumkin)
+    if isinstance(REQUIRED_GROUP, int):
+        # ID dan havola yasab bo'lmaydi, shuning uchun faqat tugma matni ko'rsatamiz
+        group_link = None
+    else:
+        group_link = f"https://t.me/{REQUIRED_GROUP.lstrip('@')}"
+
+    is_member = False
     try:
         member = await ctx.bot.get_chat_member(chat_id=REQUIRED_GROUP, user_id=user_id)
         print(f"[SUB CHECK] user={user_id} (@{username}) group={REQUIRED_GROUP} status={member.status}")
 
-        if member.status in ("left", "kicked", "banned"):
-            print(f"[SUB] user={user_id} a'zo emas — bloklandi")
-        else:
-            return True  # member, administrator, creator, restricted
+        if member.status not in ("left", "kicked", "banned"):
+            return True  # a'zo
+
+        print(f"[SUB] user={user_id} a'zo emas — bloklandi")
 
     except Exception as e:
         err = str(e).lower()
         print(f"[SUB ERROR] user={user_id} group={REQUIRED_GROUP} error={e}")
+        # Faqat "bot admin emas" xatoligida o'tkazib yuborish
         if any(x in err for x in ["not enough rights", "bot was kicked", "chat not found", "forbidden"]):
-            print("[SUB] Bot admin emas yoki guruh noto'g'ri — o'tkazib yuborildi")
-            return True
-        return True  # Noma'lum xato — bloklama
+            print("[SUB] Bot admin emas yoki guruh noto'g'ri — REQUIRED_GROUP ni tekshiring!")
+            # Bu yerda bloklashni davom ettiramiz — xato konfiguratsiya, foydalanuvchini o'tkazmaymiz
+        # Foydalanuvchi topilmadi = a'zo emas
+        # Boshqa xatolarda ham bloklash
 
-    group_link = f"https://t.me/{REQUIRED_GROUP.lstrip('@')}"
-    keyboard = [[InlineKeyboardButton("✅ Guruhga qo'shilish", url=group_link)]]
-    markup = InlineKeyboardMarkup(keyboard)
+    # A'zo emas — xabar yuborish
+    if group_link:
+        keyboard = [[InlineKeyboardButton("✅ Guruhga qo'shilish", url=group_link)]]
+        markup = InlineKeyboardMarkup(keyboard)
+    else:
+        keyboard = None
+        markup = None
+
     await update.message.reply_text(
         "⛔ *Botdan foydalanish uchun guruhimizga a'zo bo'lish kerak\\!*\n\n"
-        "👇 Quyidagi tugmani bosib a'zo bo'ling, so'ng qaytadan urinib ko'ring\\.",
+        "👇 Guruhga qo'shiling va qaytadan urinib ko'ring\\.",
         parse_mode="MarkdownV2",
         reply_markup=markup,
     )
