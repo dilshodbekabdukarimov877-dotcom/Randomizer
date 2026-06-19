@@ -1,6 +1,6 @@
 """
 🎮 Tournament Randomizer Bot - Render.com uchun tayyor
-Ishlatish: BOT_TOKEN=<token> REQUIRED_GROUP=@guruh python tournament_bot.py
+Ishlatish: BOT_TOKEN=<token> REQUIRED_GROUP=<guruh_id_yoki_username> REQUIRED_GROUP_LINK=<link> python tournament_bot.py
 """
 
 import os
@@ -16,16 +16,16 @@ from telegram.ext import (
 )
 
 # ── Sozlamalar ─────────────────────────────────────────────────────────────────
-# REQUIRED_GROUP = guruh ID si (masalan: -1001234567890)
-# REQUIRED_GROUP_LINK = guruh havolasi (masalan: https://t.me/guruhim)
-_raw_group = os.environ.get("REQUIRED_GROUP", "")
-if _raw_group.lstrip("-").isdigit():
+_raw_group = os.environ.get("REQUIRED_GROUP", "").strip()
+# Guruh ID-si raqam bo'lsa (masalan: -1001234567890) uni int ga o'giramiz
+if _raw_group.startswith("-") and _raw_group[1:].isdigit():
+    REQUIRED_GROUP = int(_raw_group)
+elif _raw_group.isdigit():
     REQUIRED_GROUP = int(_raw_group)
 else:
-    REQUIRED_GROUP = _raw_group
+    REQUIRED_GROUP = _raw_group  # @username bo'lsa matn holida qoladi
 
-REQUIRED_GROUP_LINK = os.environ.get("REQUIRED_GROUP_LINK", "")
-# Agar REQUIRED_GROUP_LINK berilmagan bo'lsa, username dan yasaymiz
+REQUIRED_GROUP_LINK = os.environ.get("REQUIRED_GROUP_LINK", "").strip()
 if not REQUIRED_GROUP_LINK and isinstance(REQUIRED_GROUP, str) and REQUIRED_GROUP:
     REQUIRED_GROUP_LINK = f"https://t.me/{REQUIRED_GROUP.lstrip('@')}"
 
@@ -97,39 +97,40 @@ async def check_subscription(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> 
     if not REQUIRED_GROUP:
         return True
 
+    # Guruh ichidagi xabarlarda obunani tekshirish shart emas
+    if update.effective_chat.type in ["group", "supergroup"]:
+        return True
+
     user_id = update.effective_user.id
     username = update.effective_user.username or "no_username"
 
-    is_member = False
     try:
         member = await ctx.bot.get_chat_member(chat_id=REQUIRED_GROUP, user_id=user_id)
-        print(f"[SUB CHECK] user={user_id} (@{username}) group={REQUIRED_GROUP} status={member.status}")
+        print(f"[SUB CHECK] user={user_id} (@{username}) status={member.status}")
 
-        if member.status not in ("left", "kicked", "banned"):
-            return True  # a'zo
-
-        print(f"[SUB] user={user_id} a'zo emas — bloklandi")
+        if member.status in ("creator", "administrator", "member"):
+            return True  # Foydalanuvchi guruhda bor
 
     except Exception as e:
         err = str(e).lower()
-        print(f"[SUB ERROR] user={user_id} group={REQUIRED_GROUP} error={e}")
-        # Faqat "bot admin emas" xatoligida o'tkazib yuborish
-        if any(x in err for x in ["not enough rights", "bot was kicked", "chat not found", "forbidden"]):
-            print("[SUB] Bot admin emas yoki guruh noto'g'ri — REQUIRED_GROUP ni tekshiring!")
-            # Bu yerda bloklashni davom ettiramiz — xato konfiguratsiya, foydalanuvchini o'tkazmaymiz
-        # Foydalanuvchi topilmadi = a'zo emas
-        # Boshqa xatolarda ham bloklash
+        print(f"[SUB ERROR] user={user_id} error={e}")
+        # Agar bot guruhda admin bo'lmasa yoki guruh topilmasa, tekshirishni o'tkazib yuboramiz (bot ishdan to'xtamasligi uchun)
+        if "not enough rights" in err or "bot was kicked" in err or "chat not found" in err:
+            print("[SUB CONFIG ERROR] Bot ko'rsatilgan guruhda admin emas yoki guruh ID xato!")
+            return True 
 
-    # A'zo emas — xabar yuborish
+    # Agar a'zo bo'lmasa yoki 'left', 'kicked' bo'lsa
+    keyboard = []
     if REQUIRED_GROUP_LINK:
-        keyboard = [[InlineKeyboardButton("✅ Guruhga qo'shilish", url=REQUIRED_GROUP_LINK)]]
-        markup = InlineKeyboardMarkup(keyboard)
-    else:
-        markup = None
+        keyboard.append([InlineKeyboardButton("✅ Guruhga qo'shilish", url=REQUIRED_GROUP_LINK)])
+    
+    # Tekshirish tugmasi qo'shildi, foydalanuvchi qo'shilib qayta bosishi uchun
+    keyboard.append([InlineKeyboardButton("🔄 Tekshirish", callback_data="check_again")])
+    markup = InlineKeyboardMarkup(keyboard)
 
     await update.message.reply_text(
-        "⛔ *Botdan foydalanish uchun guruhimizga a'zo bo'lish kerak\\!*\n\n"
-        "👇 Guruhga qo'shiling va qaytadan urinib ko'ring\\.",
+        "⛔ *Botdan foydalanish uchun guruhimizga a'zo bo'lishingiz kerak\\!*\n\n"
+        "👇 Guruhga qo'shiling va tekshirish tugmasini bosing\\.",
         parse_mode="MarkdownV2",
         reply_markup=markup,
     )
@@ -138,6 +139,8 @@ async def check_subscription(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> 
 
 # ── Buyruqlar ──────────────────────────────────────────────────────────────────
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await check_subscription(update, ctx):
+        return
     text = (
         "👋 *Tournament Randomizer Botga xush kelibsiz\\!*\n\n"
         "Bu bot o'yinchilarni random juftlarga ajratib turnir o'tkazishga yordam beradi\\.\n\n"
@@ -327,7 +330,7 @@ async def ask_next_winner(chat_id: int, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             wow = (
                 "🎊🎊🎊🎊🎊🎊🎊🎊🎊🎊\n\n"
                 "🏆 *TURNIR YAKUNLANDI\\!* 🏆\n\n"
-                f"👑 *CHEMPION:*\n"
+                "👑 *CHEMPION:*\n"
                 f"🌟 *{esc(winner_name)}* 🌟 \\+3 ball\n\n"
                 + finalist_line
                 + "🥇🎖 Tabriklaymiz\\! 🎖🥇\n\n"
@@ -511,6 +514,19 @@ async def button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None
         markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(bracket_text, parse_mode="MarkdownV2", reply_markup=markup)
 
+    elif query.data == "check_again":
+        # Foydalanuvchi "Tekshirish" tugmasini bosganda ishlaydi
+        user_id = update.effective_user.id
+        try:
+            member = await ctx.bot.get_chat_member(chat_id=REQUIRED_GROUP, user_id=user_id)
+            if member.status in ("creator", "administrator", "member"):
+                await query.edit_message_text("✅ Rahmat! Guruhga a'zoligingiz tasdiqlandi. Endi botni ishlatishingiz mumkin. /start buyrug'ini bering.")
+                return
+        except Exception:
+            pass
+        
+        await query.answer("❌ Siz hali ham guruhga a'zo emassiz!", show_alert=True)
+
     elif query.data.startswith("winner:"):
         winner_name = query.data[len("winner:"):]
 
@@ -572,7 +588,7 @@ def main() -> None:
         raise ValueError("BOT_TOKEN topilmadi! Render > Environment > BOT_TOKEN qo'shing.")
 
     if REQUIRED_GROUP:
-        print(f"[CONFIG] Obuna tekshiruvi YOQILGAN: REQUIRED_GROUP={REQUIRED_GROUP!r} (type={type(REQUIRED_GROUP).__name__})")
+        print(f"[CONFIG] Obuna tekshiruvi YOQILGAN: REQUIRED_GROUP={REQUIRED_GROUP!r}")
         print(f"[CONFIG] Guruh havolasi: REQUIRED_GROUP_LINK={REQUIRED_GROUP_LINK!r}")
     else:
         print("[CONFIG] ⚠️  Obuna tekshiruvi O'CHIRILGAN — REQUIRED_GROUP o'rnatilmagan!")
