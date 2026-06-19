@@ -17,12 +17,17 @@ from telegram.ext import (
 
 # ── Sozlamalar ─────────────────────────────────────────────────────────────────
 # REQUIRED_GROUP = guruh ID si (masalan: -1001234567890)
-# Guruh ID sini bilish uchun: guruhga @userinfobot qo'shing va /start yozing
+# REQUIRED_GROUP_LINK = guruh havolasi (masalan: https://t.me/guruhim)
 _raw_group = os.environ.get("REQUIRED_GROUP", "")
 if _raw_group.lstrip("-").isdigit():
-    REQUIRED_GROUP = int(_raw_group)   # raqam bo'lsa ID sifatida ishlatamiz
+    REQUIRED_GROUP = int(_raw_group)
 else:
-    REQUIRED_GROUP = _raw_group        # aks holda username (@guruh)
+    REQUIRED_GROUP = _raw_group
+
+REQUIRED_GROUP_LINK = os.environ.get("REQUIRED_GROUP_LINK", "")
+# Agar REQUIRED_GROUP_LINK berilmagan bo'lsa, username dan yasaymiz
+if not REQUIRED_GROUP_LINK and isinstance(REQUIRED_GROUP, str) and REQUIRED_GROUP:
+    REQUIRED_GROUP_LINK = f"https://t.me/{REQUIRED_GROUP.lstrip('@')}"
 
 # ── Ma'lumotlar ────────────────────────────────────────────────────────────────
 sessions: dict = {}
@@ -95,13 +100,6 @@ async def check_subscription(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> 
     user_id = update.effective_user.id
     username = update.effective_user.username or "no_username"
 
-    # Guruh havolasini oldindan tayyorlaymiz (ID yoki username bo'lishi mumkin)
-    if isinstance(REQUIRED_GROUP, int):
-        # ID dan havola yasab bo'lmaydi, shuning uchun faqat tugma matni ko'rsatamiz
-        group_link = None
-    else:
-        group_link = f"https://t.me/{REQUIRED_GROUP.lstrip('@')}"
-
     is_member = False
     try:
         member = await ctx.bot.get_chat_member(chat_id=REQUIRED_GROUP, user_id=user_id)
@@ -123,11 +121,10 @@ async def check_subscription(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> 
         # Boshqa xatolarda ham bloklash
 
     # A'zo emas — xabar yuborish
-    if group_link:
-        keyboard = [[InlineKeyboardButton("✅ Guruhga qo'shilish", url=group_link)]]
+    if REQUIRED_GROUP_LINK:
+        keyboard = [[InlineKeyboardButton("✅ Guruhga qo'shilish", url=REQUIRED_GROUP_LINK)]]
         markup = InlineKeyboardMarkup(keyboard)
     else:
-        keyboard = None
         markup = None
 
     await update.message.reply_text(
