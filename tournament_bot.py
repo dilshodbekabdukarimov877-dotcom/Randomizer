@@ -17,10 +17,10 @@ from telegram.ext import (
 
 # ── Sozlamalar ─────────────────────────────────────────────────────────────────
 # Guruh ID-sini minus belgisi bilan aniq yozing (masalan: -1001234567890)
-REQUIRED_GROUP = -1004350849474  # <── O'zingizning guruh ID-ingizni yozing
+REQUIRED_GROUP = -1003985745639  # <── O'zingizning guruh ID-ingizni yozing
 
 # Guruh havolasini shu yerga yozing
-REQUIRED_GROUP_LINK = "https://t.me/+lhj-Awi8quU4YmRi"  # <── Guruh havolasini yozing
+REQUIRED_GROUP_LINK = "https://t.me/+3UgD_JJ1R_JlOTgy"  # <── Guruh havolasini yozing
 
 # ── Ma'lumotlar ────────────────────────────────────────────────────────────────
 sessions: dict = {}
