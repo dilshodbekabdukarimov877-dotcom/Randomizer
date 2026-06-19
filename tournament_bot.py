@@ -572,9 +572,10 @@ def main() -> None:
         raise ValueError("BOT_TOKEN topilmadi! Render > Environment > BOT_TOKEN qo'shing.")
 
     if REQUIRED_GROUP:
-        print(f"Obuna tekshiruvi yoqilgan: {REQUIRED_GROUP}")
+        print(f"[CONFIG] Obuna tekshiruvi YOQILGAN: REQUIRED_GROUP={REQUIRED_GROUP!r} (type={type(REQUIRED_GROUP).__name__})")
+        print(f"[CONFIG] Guruh havolasi: REQUIRED_GROUP_LINK={REQUIRED_GROUP_LINK!r}")
     else:
-        print("Obuna tekshiruvi o'chirilgan (REQUIRED_GROUP o'rnatilmagan)")
+        print("[CONFIG] ⚠️  Obuna tekshiruvi O'CHIRILGAN — REQUIRED_GROUP o'rnatilmagan!")
 
     health_thread = threading.Thread(target=start_health_server, daemon=True)
     health_thread.start()
