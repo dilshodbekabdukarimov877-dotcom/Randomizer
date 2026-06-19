@@ -16,18 +16,11 @@ from telegram.ext import (
 )
 
 # ── Sozlamalar ─────────────────────────────────────────────────────────────────
-_raw_group = os.environ.get("REQUIRED_GROUP", "").strip()
-# Guruh ID-si raqam bo'lsa (masalan: -1001234567890) uni int ga o'giramiz
-if _raw_group.startswith("-") and _raw_group[1:].isdigit():
-    REQUIRED_GROUP = int(_raw_group)
-elif _raw_group.isdigit():
-    REQUIRED_GROUP = int(_raw_group)
-else:
-    REQUIRED_GROUP = _raw_group  # @username bo'lsa matn holida qoladi
+# Guruh ID-sini minus belgisi bilan aniq yozing (masalan: -1001234567890)
+REQUIRED_GROUP = -1004350849474  # <── O'zingizning guruh ID-ingizni yozing
 
-REQUIRED_GROUP_LINK = os.environ.get("REQUIRED_GROUP_LINK", "").strip()
-if not REQUIRED_GROUP_LINK and isinstance(REQUIRED_GROUP, str) and REQUIRED_GROUP:
-    REQUIRED_GROUP_LINK = f"https://t.me/{REQUIRED_GROUP.lstrip('@')}"
+# Guruh havolasini shu yerga yozing
+REQUIRED_GROUP_LINK = "https://t.me/+lhj-Awi8quU4YmRi"  # <── Guruh havolasini yozing
 
 # ── Ma'lumotlar ────────────────────────────────────────────────────────────────
 sessions: dict = {}
